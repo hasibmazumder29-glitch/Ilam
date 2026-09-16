@@ -1,0 +1,120 @@
+package com.example.ui.common
+
+enum class AppLanguage(val label: String, val code: String) {
+    EN("English", "en"),
+    BN("বাংলা", "bn")
+}
+
+object Strings {
+    // Navigation / Header
+    fun brandName(lang: AppLanguage) = if (lang == AppLanguage.BN) "ইলাম" else "ILAM"
+    fun brandTagline(lang: AppLanguage) = if (lang == AppLanguage.BN) "প্রিমিয়াম ফ্যাশন স্টোর" else "Haute Couture & Luxury Fashion"
+    fun home(lang: AppLanguage) = if (lang == AppLanguage.BN) "হোম" else "Home"
+    fun shop(lang: AppLanguage) = if (lang == AppLanguage.BN) "দোকান" else "Shop"
+    fun cart(lang: AppLanguage) = if (lang == AppLanguage.BN) "ব্যাগ" else "Bag"
+    fun wishlist(lang: AppLanguage) = if (lang == AppLanguage.BN) "উইশলিস্ট" else "Wishlist"
+    fun account(lang: AppLanguage) = if (lang == AppLanguage.BN) "প্রোফাইল" else "Account"
+    fun orders(lang: AppLanguage) = if (lang == AppLanguage.BN) "আমার অর্ডার" else "My Orders"
+    fun adminPortal(lang: AppLanguage) = if (lang == AppLanguage.BN) "মালিক প্যানেল" else "Owner Portal"
+    fun exitAdmin(lang: AppLanguage) = if (lang == AppLanguage.BN) "কাস্টমার অ্যাপে ফিরুন" else "Exit to Store"
+
+    // Customer Home
+    fun searchPlaceholder(lang: AppLanguage) = if (lang == AppLanguage.BN) "পোশাক, সাইজ বা ক্যাটাগরি খুঁজুন..." else "Search silk panjabi, overshirts, loafers..."
+    fun categories(lang: AppLanguage) = if (lang == AppLanguage.BN) "ক্যাটাগরি" else "Categories"
+    fun allProducts(lang: AppLanguage) = if (lang == AppLanguage.BN) "সকল পণ্য" else "All Collections"
+    fun newArrivals(lang: AppLanguage) = if (lang == AppLanguage.BN) "নতুন আগমন" else "New Arrivals"
+    fun featuredPieces(lang: AppLanguage) = if (lang == AppLanguage.BN) "বিশেষ সংকলন" else "Curated Pieces"
+    fun bestSellers(lang: AppLanguage) = if (lang == AppLanguage.BN) "সেরা বিক্রিত" else "Best Sellers"
+    fun onSale(lang: AppLanguage) = if (lang == AppLanguage.BN) "বিশেষ ছাড়" else "Exclusive Sale"
+    fun customerReviews(lang: AppLanguage) = if (lang == AppLanguage.BN) "গ্রাহকের মতামত" else "Client Testimonials"
+    fun viewAll(lang: AppLanguage) = if (lang == AppLanguage.BN) "সব দেখুন" else "View All"
+    fun freeDeliveryAbove(threshold: Int, lang: AppLanguage) =
+        if (lang == AppLanguage.BN) "৳$threshold টাকার অর্ডারে ফ্রি ডেলিভারি" else "Complimentary delivery on orders above ৳$threshold"
+
+    // Product Detail
+    fun addToBag(lang: AppLanguage) = if (lang == AppLanguage.BN) "ব্যাগে যুক্ত করুন" else "Add to Bag"
+    fun buyNow(lang: AppLanguage) = if (lang == AppLanguage.BN) "সরাসরি কিনুন" else "Buy Now"
+    fun inStock(stock: Int, lang: AppLanguage) = if (lang == AppLanguage.BN) "স্টক আছে ($stock টি বাকি)" else "In Stock ($stock units left)"
+    fun outOfStock(lang: AppLanguage) = if (lang == AppLanguage.BN) "স্টক শেষ" else "Sold Out"
+    fun selectSize(lang: AppLanguage) = if (lang == AppLanguage.BN) "সাইজ নির্বাচন করুন" else "Select Size"
+    fun selectColor(lang: AppLanguage) = if (lang == AppLanguage.BN) "কালার নির্বাচন করুন" else "Select Color"
+    fun productDetails(lang: AppLanguage) = if (lang == AppLanguage.BN) "পণ্যের বিবরণ" else "Product Specifications"
+    fun reviewsAndRatings(lang: AppLanguage) = if (lang == AppLanguage.BN) "রিভিউ ও রেটিং" else "Reviews & Ratings"
+    fun writeReview(lang: AppLanguage) = if (lang == AppLanguage.BN) "আপনার মতামত দিন" else "Write a Review"
+    fun submit(lang: AppLanguage) = if (lang == AppLanguage.BN) "জমা দিন" else "Submit"
+    fun yourName(lang: AppLanguage) = if (lang == AppLanguage.BN) "আপনার নাম" else "Your Name"
+    fun yourReview(lang: AppLanguage) = if (lang == AppLanguage.BN) "আপনার রিভিউ লিখুন" else "Share your experience with this garment..."
+
+    // Cart & Checkout
+    fun orderSummary(lang: AppLanguage) = if (lang == AppLanguage.BN) "অর্ডার বিবরণী" else "Order Summary"
+    fun subtotal(lang: AppLanguage) = if (lang == AppLanguage.BN) "উপমোট" else "Subtotal"
+    fun discount(lang: AppLanguage) = if (lang == AppLanguage.BN) "ছাড়" else "Discount"
+    fun deliveryFee(lang: AppLanguage) = if (lang == AppLanguage.BN) "ডেলিভারি চার্জ" else "Delivery Fee"
+    fun free(lang: AppLanguage) = if (lang == AppLanguage.BN) "ফ্রি" else "FREE"
+    fun total(lang: AppLanguage) = if (lang == AppLanguage.BN) "সর্বমোট" else "Total Amount"
+    fun applyCoupon(lang: AppLanguage) = if (lang == AppLanguage.BN) "কুপন কোড লিখুন" else "Enter Coupon Code"
+    fun apply(lang: AppLanguage) = if (lang == AppLanguage.BN) "প্রয়োগ করুন" else "Apply"
+    fun couponApplied(lang: AppLanguage) = if (lang == AppLanguage.BN) "কুপন ছাড় যুক্ত হয়েছে" else "Coupon Applied"
+    fun shippingInfo(lang: AppLanguage) = if (lang == AppLanguage.BN) "ডেলিভারি ঠিকানা ও তথ্য" else "Shipping Details"
+    fun fullName(lang: AppLanguage) = if (lang == AppLanguage.BN) "পুরো নাম" else "Full Name"
+    fun phoneNumber(lang: AppLanguage) = if (lang == AppLanguage.BN) "মোবাইল নম্বর" else "Phone Number"
+    fun deliveryAddress(lang: AppLanguage) = if (lang == AppLanguage.BN) "সম্পূর্ণ ঠিকানা (বাসা/রোড/এলাকা)" else "Complete Delivery Address"
+    fun cityDistrict(lang: AppLanguage) = if (lang == AppLanguage.BN) "জেলা / শহর" else "City / District"
+    fun selectCourier(lang: AppLanguage) = if (lang == AppLanguage.BN) "কুরিয়ার সার্ভিস নির্বাচন" else "Select Courier Partner"
+    fun paymentMethod(lang: AppLanguage) = if (lang == AppLanguage.BN) "পেমেন্ট মাধ্যম" else "Payment Method"
+    fun bkashPayment(lang: AppLanguage) = if (lang == AppLanguage.BN) "বিকাশ পেমেন্ট (bKash)" else "bKash Digital Payment"
+    fun cashOnDelivery(lang: AppLanguage) = if (lang == AppLanguage.BN) "ক্যাশ অন ডেলিভারি (COD)" else "Cash on Delivery (COD)"
+    fun placeOrder(lang: AppLanguage) = if (lang == AppLanguage.BN) "অর্ডার সম্পন্ন করুন" else "Place Order"
+    fun emptyBag(lang: AppLanguage) = if (lang == AppLanguage.BN) "আপনার শপিং ব্যাগ খালি" else "Your Shopping Bag is Empty"
+    fun exploreCollections(lang: AppLanguage) = if (lang == AppLanguage.BN) "কালেকশন দেখুন" else "Explore Collections"
+
+    // Order Tracking & History
+    fun orderNumber(lang: AppLanguage) = if (lang == AppLanguage.BN) "অর্ডার নং" else "Order #"
+    fun orderDate(lang: AppLanguage) = if (lang == AppLanguage.BN) "অর্ডারের তারিখ" else "Order Placed"
+    fun orderStatus(lang: AppLanguage) = if (lang == AppLanguage.BN) "অর্ডার স্ট্যাটাস" else "Order Status"
+    fun courierAssigned(lang: AppLanguage) = if (lang == AppLanguage.BN) "কুরিয়ার" else "Courier"
+    fun trackingNumber(lang: AppLanguage) = if (lang == AppLanguage.BN) "ট্র্যাকিং নম্বর" else "Tracking Number"
+    fun trackShipment(lang: AppLanguage) = if (lang == AppLanguage.BN) "কুরিয়ার ট্র্যাক করুন" else "Track Shipment"
+    fun paymentStatus(lang: AppLanguage) = if (lang == AppLanguage.BN) "পেমেন্ট স্ট্যাটাস" else "Payment Status"
+
+    // Admin Panel
+    fun ownerDashboard(lang: AppLanguage) = if (lang == AppLanguage.BN) "মালিক ড্যাশবোর্ড" else "Owner Dashboard"
+    fun storeManagement(lang: AppLanguage) = if (lang == AppLanguage.BN) "স্টোর ম্যানেজমেন্ট" else "Store Management"
+    fun totalSales(lang: AppLanguage) = if (lang == AppLanguage.BN) "মোট বিক্রি" else "Total Sales"
+    fun todaySales(lang: AppLanguage) = if (lang == AppLanguage.BN) "আজকের বিক্রি" else "Today's Sales"
+    fun totalOrders(lang: AppLanguage) = if (lang == AppLanguage.BN) "মোট অর্ডার" else "Total Orders"
+    fun pendingOrders(lang: AppLanguage) = if (lang == AppLanguage.BN) "পেন্ডিং অর্ডার" else "Pending Orders"
+    fun processingOrders(lang: AppLanguage) = if (lang == AppLanguage.BN) "প্রসেসিং হচ্ছে" else "Processing"
+    fun deliveredOrders(lang: AppLanguage) = if (lang == AppLanguage.BN) "ডেলিভার্ড" else "Delivered"
+    fun cancelledOrders(lang: AppLanguage) = if (lang == AppLanguage.BN) "বাতিলকৃত" else "Cancelled"
+    fun totalCustomers(lang: AppLanguage) = if (lang == AppLanguage.BN) "মোট গ্রাহক" else "Total Customers"
+    fun lowStockAlert(lang: AppLanguage) = if (lang == AppLanguage.BN) "কম স্টক সতর্কতা" else "Low Stock Alert"
+    fun manageProducts(lang: AppLanguage) = if (lang == AppLanguage.BN) "পণ্য ব্যবস্থাপনা" else "Products"
+    fun manageCategories(lang: AppLanguage) = if (lang == AppLanguage.BN) "ক্যাটাগরি" else "Categories"
+    fun manageOrders(lang: AppLanguage) = if (lang == AppLanguage.BN) "অর্ডার তালিকা" else "Orders"
+    fun manageCouriers(lang: AppLanguage) = if (lang == AppLanguage.BN) "কুরিয়ার সার্ভিস" else "Couriers"
+    fun manageCoupons(lang: AppLanguage) = if (lang == AppLanguage.BN) "কুপন কোড" else "Coupons"
+    fun manageBanners(lang: AppLanguage) = if (lang == AppLanguage.BN) "হোম ব্যানার" else "Banners"
+    fun manageReviews(lang: AppLanguage) = if (lang == AppLanguage.BN) "গ্রাহক রিভিউ" else "Reviews"
+    fun storeSettings(lang: AppLanguage) = if (lang == AppLanguage.BN) "স্টোর সেটিংস" else "Settings"
+    fun addProduct(lang: AppLanguage) = if (lang == AppLanguage.BN) "নতুন পণ্য যোগ করুন" else "Add New Product"
+    fun editProduct(lang: AppLanguage) = if (lang == AppLanguage.BN) "পণ্য পরিবর্তন করুন" else "Edit Product"
+    fun delete(lang: AppLanguage) = if (lang == AppLanguage.BN) "মুছে ফেলুন" else "Delete"
+    fun saveChanges(lang: AppLanguage) = if (lang == AppLanguage.BN) "সংরক্ষণ করুন" else "Save Changes"
+    fun cancel(lang: AppLanguage) = if (lang == AppLanguage.BN) "বাতিল" else "Cancel"
+    fun updateStatus(lang: AppLanguage) = if (lang == AppLanguage.BN) "স্ট্যাটাস পরিবর্তন" else "Update Status"
+    fun assignTracking(lang: AppLanguage) = if (lang == AppLanguage.BN) "ট্র্যাকিং কোড যুক্ত করুন" else "Assign Tracking"
+    fun passcodeInput(lang: AppLanguage) = if (lang == AppLanguage.BN) "মালিক পিন কোড লিখুন" else "Enter Owner Security PIN"
+    fun unlockAdmin(lang: AppLanguage) = if (lang == AppLanguage.BN) "আনলক করুন" else "Unlock Admin Panel"
+    fun incorrectPasscode(lang: AppLanguage) = if (lang == AppLanguage.BN) "ভুল পিন কোড" else "Incorrect Security PIN"
+    fun defaultPinNotice(lang: AppLanguage) = if (lang == AppLanguage.BN) "ডিফল্ট পিন: ilam2026" else "Default Owner PIN: ilam2026"
+
+    // Global Loading & Network Operations
+    fun loading(lang: AppLanguage) = if (lang == AppLanguage.BN) "লোড হচ্ছে..." else "Loading..."
+    fun authenticating(lang: AppLanguage) = if (lang == AppLanguage.BN) "নিরাপত্তা পাসকোড যাচাই করা হচ্ছে..." else "Verifying Security Credentials..."
+    fun processingOrder(lang: AppLanguage) = if (lang == AppLanguage.BN) "অর্ডার ও পেমেন্ট প্রক্রিয়াধীন..." else "Securing Your Order & Payment..."
+    fun validatingCoupon(lang: AppLanguage) = if (lang == AppLanguage.BN) "কুপন কোড যাচাই করা হচ্ছে..." else "Validating Promotional Code..."
+    fun updatingStoreData(lang: AppLanguage) = if (lang == AppLanguage.BN) "স্টোর ডাটাবেজ আপডেট হচ্ছে..." else "Synchronizing Store Catalog..."
+    fun submittingReview(lang: AppLanguage) = if (lang == AppLanguage.BN) "রিভিউ জমা দেওয়া হচ্ছে..." else "Submitting Customer Review..."
+    fun pleaseWait(lang: AppLanguage) = if (lang == AppLanguage.BN) "অনুগ্রহ করে অপেক্ষা করুন" else "Please wait a moment"
+}
