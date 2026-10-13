@@ -1,0 +1,167 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // =========================================================================
+    // ROLE-BASED ACCESS CONTROL (RBAC) FUNCTIONS
+    // Roles: OWNER, MANAGER, STAFF
+    // =========================================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function hasRole(role) {
+      return isAuthenticated() && (getUserDoc().role == role);
+    }
+    
+    function isOwner() {
+      return hasRole('OWNER');
+    }
+    
+    function isManager() {
+      return hasRole('MANAGER');
+    }
+    
+    function isStaff() {
+      return hasRole('STAFF');
+    }
+
+    function isManagement() {
+      return isOwner() || isManager();
+    }
+
+    // =========================================================================
+    // 1. USERS & STAFF ACCOUNTS
+    // Only OWNER can provision or modify staff accounts and assign roles
+    // =========================================================================
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isManagement());
+      allow create, update, delete: if isOwner();
+    }
+
+    // =========================================================================
+    // 2. PRODUCTS COLLECTION
+    // Customer: Read only active, published products (stock > 0, isDeleted == false, isPublished == true)
+    // Staff: Read all products to scan and sell. Cannot delete or change prices.
+    // Manager: Add and edit products, restock. Cannot delete.
+    // Owner: Full access (create, edit, soft-delete). Hard delete is prevented.
+    // =========================================================================
+    match /products/{productId} {
+      // Read rule:
+      // Customers read live products. Staff & Management can inspect any item.
+      allow read: if isManagement() || isStaff() || (
+        resource.data.isPublished == true && 
+        resource.data.isDeleted == false
+      );
+      
+      // Create rule:
+      // Only Owner and Manager can create new products with valid SKU and pricing
+      allow create: if isManagement() &&
+        request.resource.data.keys().hasAll(['sku', 'nameEn', 'price', 'stock']) &&
+        request.resource.data.sku is string &&
+        request.resource.data.price > 0 &&
+        request.resource.data.stock >= 0;
+
+      // Update rule:
+      // - OWNER: Can edit all product fields, including soft-delete status.
+      // - MANAGER: Can edit product details and stock, but cannot soft-delete.
+      // - STAFF: Strictly CANNOT modify selling price, purchase price, or title.
+      //          Staff can only decrement stock during an authenticated POS sale.
+      allow update: if isOwner() ||
+        (isManager() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isDeleted'])) ||
+        (isStaff() &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['price', 'purchasePrice', 'nameEn', 'isDeleted', 'isPublished', 'sku', 'barcode']) &&
+          request.resource.data.stock < resource.data.stock
+        );
+
+      // Delete rule:
+      // Hard delete is explicitly FORBIDDEN to protect historical sales integrity.
+      // Products must be soft-deleted (isDeleted = true, isPublished = false).
+      allow delete: if false;
+    }
+
+    // =========================================================================
+    // 3. INVENTORY STOCKS & VARIANTS
+    // Variant level stocks (size, color, location)
+    // =========================================================================
+    match /inventory_stocks/{stockId} {
+      allow read: if isManagement() || isStaff();
+      allow write: if isManagement();
+    }
+
+    // =========================================================================
+    // 4. SALES & ORDERS (HISTORICAL RECORDS PRESERVATION)
+    // Historical sales records must remain permanently available in reports.
+    // Neither Staff nor Owner may destroy historical sales records.
+    // =========================================================================
+    match /orders/{orderId} {
+      // Read rule:
+      // Customers can read their own orders; Management and Staff can view orders and sales reports
+      allow read: if isManagement() || isStaff() || (
+        isAuthenticated() && resource.data.customerId == request.auth.uid
+      );
+      
+      // Create rule:
+      // Allowed for verified online customer checkouts or staff POS counter sales
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasAll(['orderNumber', 'totalAmount', 'createdAt']) &&
+        request.resource.data.totalAmount >= 0;
+
+      // Update rule:
+      // Only Owner and Manager can update order statuses (e.g., Courier dispatch, delivery)
+      allow update: if isManagement() &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['totalAmount', 'createdAt', 'orderNumber']);
+
+      // Delete rule:
+      // NEVER allow deleting sales history. Preserved for audits and financial reports.
+      allow delete: if false;
+    }
+
+    // Order items subcollection
+    match /orders/{orderId}/items/{itemId} {
+      allow read: if isManagement() || isStaff() || (
+        isAuthenticated() && get(/databases/$(database)/documents/orders/$(orderId)).data.customerId == request.auth.uid
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    // =========================================================================
+    // 5. CATEGORIES, COURIERS, COUPONS, BANNERS, REVIEWS, SETTINGS
+    // =========================================================================
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isManagement();
+    }
+
+    match /couriers/{courierId} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    match /banners/{bannerId} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update, delete: if isManagement();
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+  }
+}

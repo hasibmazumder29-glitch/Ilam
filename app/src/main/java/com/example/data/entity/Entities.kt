@@ -79,8 +79,76 @@ data class ProductEntity(
     val isSale: Boolean = false,
     val isPublished: Boolean = true,
     val primaryImageUrl: String = "",
+    val additionalImages: String = "", // Comma-separated image URLs or URIs
+    val barcode: String = "", // UPC/EAN/Barcode string
+    val brand: String = "ILAM Atelier",
+    val purchasePrice: Double = 0.0, // Cost price (hidden from standard STAFF)
+    val minStockAlert: Int = 3, // Minimum stock threshold before warning
+    val supplier: String = "ILAM In-house Master Tailoring",
+    val isDeleted: Boolean = false, // Soft-delete / archive flag
+    val stockStatus: String = "IN_STOCK", // "IN_STOCK", "OUT_OF_STOCK", "LOW_STOCK"
     val createdAt: Long = System.currentTimeMillis()
+) {
+    val isOutOfStock: Boolean
+        get() = stock <= 0 || stockStatus == "OUT_OF_STOCK"
+
+    val isLowStock: Boolean
+        get() = !isOutOfStock && stock <= minStockAlert
+
+    val effectiveSellingPrice: Double
+        get() = if (discountPrice > 0.0) discountPrice else price
+
+    val discountPercentage: Int
+        get() = if (price > 0.0 && discountPrice > 0.0 && discountPrice < price) (((price - discountPrice) / price) * 100).toInt() else 0
+
+    val effectiveStockStatus: String
+        get() = when {
+            isDeleted -> "DELETED"
+            !isPublished -> "HIDDEN"
+            stock <= 0 -> "OUT_OF_STOCK"
+            stock <= minStockAlert -> "LOW_STOCK"
+            else -> "IN_STOCK"
+        }
+}
+
+/**
+ * Dedicated inventory stock level entity for granular fashion inventory tracking
+ * by product variant (size, color, location/rack/warehouse, reorder threshold).
+ */
+@Entity(
+    tableName = "inventory_stocks",
+    indices = [
+        Index(value = ["productId"]),
+        Index(value = ["productId", "size", "color"], unique = true)
+    ],
+    foreignKeys = [
+        ForeignKey(
+            entity = ProductEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["productId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
 )
+data class InventoryStockEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val productId: Long,
+    val size: String = "M",
+    val color: String = "Default",
+    val quantityOnHand: Int = 0,
+    val reservedQuantity: Int = 0, // In active checkouts / reserved
+    val reorderPoint: Int = 5,      // Low stock warning threshold
+    val warehouseLocation: String = "Banani Main Flagship",
+    val rackBinNumber: String = "RACK-A1",
+    val lastRestockedAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+) {
+    val availableStock: Int
+        get() = (quantityOnHand - reservedQuantity).coerceAtLeast(0)
+
+    val isLowStock: Boolean
+        get() = availableStock <= reorderPoint
+}
 
 @Entity(tableName = "product_images")
 data class ProductImageEntity(
@@ -130,6 +198,9 @@ data class OrderEntity(
     val courierName: String = "Steadfast Courier",
     val trackingNumber: String = "",
     val notes: String = "",
+    val salesChannel: String = "ONLINE", // "ONLINE" or "OUTLET_POS"
+    val soldByStaffName: String = "Online Checkout",
+    val soldByStaffRole: String = "CUSTOMER", // "OWNER", "MANAGER", "STAFF"
     val createdAt: Long = System.currentTimeMillis()
 )
 

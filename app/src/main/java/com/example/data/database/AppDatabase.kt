@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
         CategoryEntity::class,
         SubcategoryEntity::class,
         ProductEntity::class,
+        InventoryStockEntity::class,
         ProductImageEntity::class,
         CartItemEntity::class,
         WishlistItemEntity::class,
@@ -30,11 +31,12 @@ import kotlinx.coroutines.launch
         BannerEntity::class,
         StoreSettingsEntity::class
     ],
-    version = 1,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
+    abstract fun inventoryDao(): InventoryDao
     abstract fun categoryDao(): CategoryDao
     abstract fun orderDao(): OrderDao
     abstract fun cartDao(): CartDao
@@ -56,7 +58,8 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "ilam_fashion.db"
-                ).addCallback(object : RoomDatabase.Callback() {
+                ).fallbackToDestructiveMigration()
+                .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
                         CoroutineScope(Dispatchers.IO).launch {

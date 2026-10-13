@@ -9,7 +9,10 @@ interface ProductDao {
     @Query("SELECT * FROM products ORDER BY id DESC")
     fun getAllProducts(): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE isPublished = 1 ORDER BY id DESC")
+    @Query("SELECT * FROM products WHERE isDeleted = 0 ORDER BY id DESC")
+    fun getActiveProducts(): Flow<List<ProductEntity>>
+
+    @Query("SELECT * FROM products WHERE isPublished = 1 AND isDeleted = 0 AND stock > 0 ORDER BY id DESC")
     fun getPublishedProducts(): Flow<List<ProductEntity>>
 
     @Query("SELECT * FROM products WHERE id = :id")
@@ -18,23 +21,29 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE id = :id")
     suspend fun getProductByIdSync(id: Long): ProductEntity?
 
-    @Query("SELECT * FROM products WHERE isPublished = 1 AND categoryId = :categoryId ORDER BY id DESC")
+    @Query("SELECT * FROM products WHERE (sku = :identifier OR barcode = :identifier) AND isDeleted = 0 LIMIT 1")
+    suspend fun findProductBySkuOrBarcode(identifier: String): ProductEntity?
+
+    @Query("SELECT * FROM products WHERE isPublished = 1 AND isDeleted = 0 AND categoryId = :categoryId ORDER BY id DESC")
     fun getProductsByCategory(categoryId: Long): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE isPublished = 1 AND isNewArrival = 1 ORDER BY id DESC")
+    @Query("SELECT * FROM products WHERE isPublished = 1 AND isDeleted = 0 AND isNewArrival = 1 ORDER BY id DESC")
     fun getNewArrivals(): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE isPublished = 1 AND isFeatured = 1 ORDER BY id DESC")
+    @Query("SELECT * FROM products WHERE isPublished = 1 AND isDeleted = 0 AND isFeatured = 1 ORDER BY id DESC")
     fun getFeaturedProducts(): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE isPublished = 1 AND isBestSeller = 1 ORDER BY id DESC")
+    @Query("SELECT * FROM products WHERE isPublished = 1 AND isDeleted = 0 AND isBestSeller = 1 ORDER BY id DESC")
     fun getBestSellers(): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE isPublished = 1 AND (isSale = 1 OR discountPrice > 0) ORDER BY id DESC")
+    @Query("SELECT * FROM products WHERE isPublished = 1 AND isDeleted = 0 AND (isSale = 1 OR discountPrice > 0) ORDER BY id DESC")
     fun getSaleProducts(): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE stock <= :threshold ORDER BY stock ASC")
-    fun getLowStockProducts(threshold: Int = 5): Flow<List<ProductEntity>>
+    @Query("SELECT * FROM products WHERE isDeleted = 0 AND stock <= minStockAlert ORDER BY stock ASC")
+    fun getLowStockProducts(): Flow<List<ProductEntity>>
+
+    @Query("SELECT * FROM products WHERE isDeleted = 0 AND stock <= :threshold ORDER BY stock ASC")
+    fun getLowStockProductsWithThreshold(threshold: Int = 5): Flow<List<ProductEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(product: ProductEntity): Long
@@ -51,8 +60,56 @@ interface ProductDao {
     @Query("DELETE FROM products WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    @Query("UPDATE products SET isDeleted = 1, isPublished = 0 WHERE id = :id")
+    suspend fun archiveProduct(id: Long)
+
     @Query("UPDATE products SET isPublished = :isPublished WHERE id = :id")
     suspend fun setPublished(id: Long, isPublished: Boolean)
+
+    @Query("UPDATE products SET stock = :newStock, stockStatus = CASE WHEN :newStock <= 0 THEN 'OUT_OF_STOCK' WHEN :newStock <= minStockAlert THEN 'LOW_STOCK' ELSE 'IN_STOCK' END WHERE id = :id")
+    suspend fun updateStockLevel(id: Long, newStock: Int)
+
+    @Query("UPDATE products SET stock = CASE WHEN (stock - :quantity) < 0 THEN 0 ELSE (stock - :quantity) END, stockStatus = CASE WHEN (stock - :quantity) <= 0 THEN 'OUT_OF_STOCK' WHEN (stock - :quantity) <= minStockAlert THEN 'LOW_STOCK' ELSE 'IN_STOCK' END WHERE id = :id")
+    suspend fun decreaseStockQuantity(id: Long, quantity: Int)
+}
+
+@Dao
+interface InventoryDao {
+    @Query("SELECT * FROM inventory_stocks ORDER BY id DESC")
+    fun getAllInventoryStocks(): Flow<List<InventoryStockEntity>>
+
+    @Query("SELECT * FROM inventory_stocks WHERE productId = :productId ORDER BY size ASC, color ASC")
+    fun getStocksByProductId(productId: Long): Flow<List<InventoryStockEntity>>
+
+    @Query("SELECT * FROM inventory_stocks WHERE productId = :productId AND size = :size AND color = :color LIMIT 1")
+    suspend fun getStockByVariant(productId: Long, size: String, color: String): InventoryStockEntity?
+
+    @Query("SELECT * FROM inventory_stocks WHERE (quantityOnHand - reservedQuantity) <= reorderPoint ORDER BY quantityOnHand ASC")
+    fun getLowStockAlerts(): Flow<List<InventoryStockEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStock(stock: InventoryStockEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllStocks(stocks: List<InventoryStockEntity>)
+
+    @Update
+    suspend fun updateStock(stock: InventoryStockEntity)
+
+    @Delete
+    suspend fun deleteStock(stock: InventoryStockEntity)
+
+    @Query("DELETE FROM inventory_stocks WHERE id = :id")
+    suspend fun deleteStockById(id: Long)
+
+    @Query("DELETE FROM inventory_stocks WHERE productId = :productId")
+    suspend fun deleteStocksByProductId(productId: Long)
+
+    @Query("UPDATE inventory_stocks SET quantityOnHand = quantityOnHand + :addedQuantity, lastRestockedAt = :timestamp, updatedAt = :timestamp WHERE id = :stockId")
+    suspend fun restockVariant(stockId: Long, addedQuantity: Int, timestamp: Long = System.currentTimeMillis())
+
+    @Query("SELECT SUM(quantityOnHand - reservedQuantity) FROM inventory_stocks WHERE productId = :productId")
+    suspend fun getTotalAvailableStockForProduct(productId: Long): Int?
 }
 
 @Dao

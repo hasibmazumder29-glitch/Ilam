@@ -29,6 +29,33 @@ class IlamRepository(private val db: AppDatabase) {
     private val bannerDao = db.bannerDao()
     private val storeSettingsDao = db.storeSettingsDao()
     private val userDao = db.userDao()
+    private val inventoryDao = db.inventoryDao()
+
+    // --- Inventory Stocks & Tracking ---
+    val allInventoryStocks: Flow<List<InventoryStockEntity>> = inventoryDao.getAllInventoryStocks()
+    val lowStockAlerts: Flow<List<InventoryStockEntity>> = inventoryDao.getLowStockAlerts()
+
+    fun getStocksByProduct(productId: Long): Flow<List<InventoryStockEntity>> = inventoryDao.getStocksByProductId(productId)
+
+    suspend fun insertStock(stock: InventoryStockEntity): Long = withContext(Dispatchers.IO) {
+        inventoryDao.insertStock(stock)
+    }
+
+    suspend fun updateStock(stock: InventoryStockEntity) = withContext(Dispatchers.IO) {
+        inventoryDao.updateStock(stock)
+    }
+
+    suspend fun deleteStock(id: Long) = withContext(Dispatchers.IO) {
+        inventoryDao.deleteStockById(id)
+    }
+
+    suspend fun restockVariant(stockId: Long, additionalQuantity: Int) = withContext(Dispatchers.IO) {
+        inventoryDao.restockVariant(stockId, additionalQuantity)
+    }
+
+    suspend fun getTotalAvailableStock(productId: Long): Int = withContext(Dispatchers.IO) {
+        inventoryDao.getTotalAvailableStockForProduct(productId) ?: 0
+    }
 
     // Ensure database is populated on first access
     suspend fun ensureDatabasePopulated() = withContext(Dispatchers.IO) {
@@ -40,26 +67,75 @@ class IlamRepository(private val db: AppDatabase) {
 
     // --- Products ---
     val allProducts: Flow<List<ProductEntity>> = productDao.getAllProducts()
+    val activeProducts: Flow<List<ProductEntity>> = productDao.getActiveProducts()
     val publishedProducts: Flow<List<ProductEntity>> = productDao.getPublishedProducts()
     val newArrivals: Flow<List<ProductEntity>> = productDao.getNewArrivals()
     val featuredProducts: Flow<List<ProductEntity>> = productDao.getFeaturedProducts()
     val bestSellers: Flow<List<ProductEntity>> = productDao.getBestSellers()
     val saleProducts: Flow<List<ProductEntity>> = productDao.getSaleProducts()
-    val lowStockProducts: Flow<List<ProductEntity>> = productDao.getLowStockProducts(5)
+    val lowStockProducts: Flow<List<ProductEntity>> = productDao.getLowStockProducts()
 
     fun getProductById(id: Long): Flow<ProductEntity?> = productDao.getProductById(id)
     fun getProductsByCategory(categoryId: Long): Flow<List<ProductEntity>> = productDao.getProductsByCategory(categoryId)
 
+    suspend fun findProductBySkuOrBarcode(code: String): ProductEntity? = withContext(Dispatchers.IO) {
+        productDao.findProductBySkuOrBarcode(code.trim())
+    }
+
     suspend fun insertProduct(product: ProductEntity): Long = withContext(Dispatchers.IO) {
-        productDao.insert(product)
+        val updated = product.copy(
+            stockStatus = when {
+                product.stock <= 0 -> "OUT_OF_STOCK"
+                product.stock <= product.minStockAlert -> "LOW_STOCK"
+                else -> "IN_STOCK"
+            }
+        )
+        productDao.insert(updated)
     }
 
     suspend fun updateProduct(product: ProductEntity) = withContext(Dispatchers.IO) {
-        productDao.update(product)
+        val updated = product.copy(
+            stockStatus = when {
+                product.stock <= 0 -> "OUT_OF_STOCK"
+                product.stock <= product.minStockAlert -> "LOW_STOCK"
+                else -> "IN_STOCK"
+            }
+        )
+        productDao.update(updated)
+    }
+
+    suspend fun duplicateProduct(product: ProductEntity): Long = withContext(Dispatchers.IO) {
+        val uniqueSku = "${product.sku}-COPY-${System.currentTimeMillis() % 1000}"
+        val copy = product.copy(
+            id = 0,
+            sku = uniqueSku,
+            barcode = if (product.barcode.isNotBlank()) "${product.barcode}-1" else "",
+            nameEn = "${product.nameEn} (Copy)",
+            nameBn = "${product.nameBn} (অনুলিপি)",
+            createdAt = System.currentTimeMillis()
+        )
+        productDao.insert(copy)
+    }
+
+    suspend fun archiveProduct(id: Long) = withContext(Dispatchers.IO) {
+        productDao.archiveProduct(id)
+    }
+
+    suspend fun deleteProductPermanently(id: Long) = withContext(Dispatchers.IO) {
+        productDao.deleteById(id)
     }
 
     suspend fun deleteProduct(id: Long) = withContext(Dispatchers.IO) {
-        productDao.deleteById(id)
+        // Soft delete / archive to protect historical sales records!
+        productDao.archiveProduct(id)
+    }
+
+    suspend fun decreaseProductStock(id: Long, quantity: Int) = withContext(Dispatchers.IO) {
+        productDao.decreaseStockQuantity(id, quantity)
+    }
+
+    suspend fun updateProductStock(id: Long, newStock: Int) = withContext(Dispatchers.IO) {
+        productDao.updateStockLevel(id, newStock)
     }
 
     suspend fun toggleProductPublish(id: Long, currentPublished: Boolean) = withContext(Dispatchers.IO) {
@@ -130,6 +206,9 @@ class IlamRepository(private val db: AppDatabase) {
         val orderId = orderDao.insertOrder(order)
 
         val orderItems = cartItemsWithProducts.map { (cartItem, product) ->
+            // Decrement remaining stock automatically upon sale
+            productDao.decreaseStockQuantity(product.id, cartItem.quantity)
+
             OrderItemEntity(
                 orderId = orderId,
                 productId = product.id,
@@ -144,6 +223,64 @@ class IlamRepository(private val db: AppDatabase) {
 
         // Clear user's cart
         cartDao.clearCart(1)
+
+        orderId
+    }
+
+    suspend fun createPosSale(
+        product: ProductEntity,
+        quantity: Int,
+        size: String,
+        color: String,
+        unitPrice: Double,
+        staffName: String,
+        staffRole: String,
+        paymentMethod: String = "Cash at Counter",
+        customerName: String = "Walk-in Guest",
+        customerPhone: String = "+880 1700-000000"
+    ): Long = withContext(Dispatchers.IO) {
+        val dateFormat = SimpleDateFormat("yyMMdd-HHmmss", Locale.US)
+        val orderNumber = "ILAM-POS-${dateFormat.format(Date())}-${(100..999).random()}"
+        val totalAmount = unitPrice * quantity
+
+        val order = OrderEntity(
+            orderNumber = orderNumber,
+            customerId = 1,
+            customerName = customerName,
+            customerPhone = customerPhone,
+            customerAddress = "Banani Flagship Store Outlet",
+            customerDistrict = "Dhaka",
+            subtotal = totalAmount,
+            discount = 0.0,
+            deliveryCharge = 0.0,
+            totalAmount = totalAmount,
+            paymentMethod = paymentMethod,
+            paymentStatus = "Paid",
+            orderStatus = "Delivered", // Instant over-the-counter fulfillment
+            courierId = 0,
+            courierName = "In-Store Counter Pickup",
+            trackingNumber = "POS-INSTANT",
+            notes = "Counter Sale processed by $staffName ($staffRole)",
+            salesChannel = "OUTLET_POS",
+            soldByStaffName = staffName,
+            soldByStaffRole = staffRole,
+            createdAt = System.currentTimeMillis()
+        )
+        val orderId = orderDao.insertOrder(order)
+
+        val item = OrderItemEntity(
+            orderId = orderId,
+            productId = product.id,
+            productName = product.nameEn,
+            productPrice = unitPrice,
+            quantity = quantity,
+            size = size,
+            color = color
+        )
+        orderDao.insertOrderItems(listOf(item))
+
+        // Decrement stock automatically
+        productDao.decreaseStockQuantity(product.id, quantity)
 
         orderId
     }

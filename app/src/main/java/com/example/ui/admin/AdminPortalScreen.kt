@@ -77,6 +77,34 @@ fun AdminPortalScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    val userRole by viewModel.currentUserRole.collectAsState()
+
+                    // Role Badge & Quick Switcher for Testing
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = when (userRole) {
+                            com.example.ui.viewmodel.UserRole.OWNER -> IlamGoldDark
+                            com.example.ui.viewmodel.UserRole.MANAGER -> Color(0xFF1565C0)
+                            com.example.ui.viewmodel.UserRole.STAFF -> Color(0xFF2E7D32)
+                        },
+                        modifier = Modifier.clickable {
+                            val nextRole = when (userRole) {
+                                com.example.ui.viewmodel.UserRole.OWNER -> com.example.ui.viewmodel.UserRole.MANAGER
+                                com.example.ui.viewmodel.UserRole.MANAGER -> com.example.ui.viewmodel.UserRole.STAFF
+                                com.example.ui.viewmodel.UserRole.STAFF -> com.example.ui.viewmodel.UserRole.OWNER
+                            }
+                            viewModel.setStaffRoleDirectly(nextRole)
+                        }
+                    ) {
+                        Text(
+                            text = userRole.name,
+                            color = IlamWhite,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+
                     // Language Switcher
                     Surface(
                         shape = RoundedCornerShape(14.dp),
@@ -113,21 +141,31 @@ fun AdminPortalScreen(
             }
         }
 
+        val userRole by viewModel.currentUserRole.collectAsState()
+
         // Module Tabs Scrollable Row
-        val tabs = listOf(
+        val tabs = listOfNotNull(
             Triple(AdminTab.DASHBOARD, Icons.Default.Dashboard, Strings.ownerDashboard(language)),
+            Triple(AdminTab.SCAN_PRODUCT, Icons.Default.QrCodeScanner, Strings.scanProduct(language)),
+            Triple(AdminTab.POS_SALES, Icons.Default.PointOfSale, Strings.posTerminal(language)),
             Triple(AdminTab.PRODUCTS, Icons.Default.Checkroom, Strings.manageProducts(language)),
-            Triple(AdminTab.CATEGORIES, Icons.Default.Category, Strings.manageCategories(language)),
+            Triple(AdminTab.INVENTORY, Icons.Default.Inventory, Strings.manageInventory(language)),
             Triple(AdminTab.ORDERS, Icons.Default.LocalShipping, Strings.manageOrders(language)),
-            Triple(AdminTab.COURIERS, Icons.Default.RvHookup, Strings.manageCouriers(language)),
-            Triple(AdminTab.COUPONS, Icons.Default.Discount, Strings.manageCoupons(language)),
-            Triple(AdminTab.BANNERS, Icons.Default.ViewCarousel, Strings.manageBanners(language)),
+            if (userRole == com.example.ui.viewmodel.UserRole.OWNER || userRole == com.example.ui.viewmodel.UserRole.MANAGER)
+                Triple(AdminTab.CATEGORIES, Icons.Default.Category, Strings.manageCategories(language)) else null,
+            if (userRole == com.example.ui.viewmodel.UserRole.OWNER)
+                Triple(AdminTab.COURIERS, Icons.Default.RvHookup, Strings.manageCouriers(language)) else null,
+            if (userRole == com.example.ui.viewmodel.UserRole.OWNER)
+                Triple(AdminTab.COUPONS, Icons.Default.Discount, Strings.manageCoupons(language)) else null,
+            if (userRole == com.example.ui.viewmodel.UserRole.OWNER)
+                Triple(AdminTab.BANNERS, Icons.Default.ViewCarousel, Strings.manageBanners(language)) else null,
             Triple(AdminTab.REVIEWS, Icons.Default.RateReview, Strings.manageReviews(language)),
-            Triple(AdminTab.SETTINGS, Icons.Default.Settings, Strings.storeSettings(language))
+            if (userRole == com.example.ui.viewmodel.UserRole.OWNER)
+                Triple(AdminTab.SETTINGS, Icons.Default.Settings, Strings.storeSettings(language)) else null
         )
 
         ScrollableTabRow(
-            selectedTabIndex = tabs.indexOfFirst { it.first == currentTab },
+            selectedTabIndex = tabs.indexOfFirst { it.first == currentTab }.coerceAtLeast(0),
             containerColor = IlamDark,
             contentColor = IlamGold,
             edgePadding = 12.dp,
@@ -163,7 +201,10 @@ fun AdminPortalScreen(
         ) {
             when (currentTab) {
                 AdminTab.DASHBOARD -> AdminDashboardView(viewModel = viewModel, language = language)
+                AdminTab.SCAN_PRODUCT -> AdminScannerView(viewModel = viewModel, language = language)
+                AdminTab.POS_SALES -> AdminPosSalesView(viewModel = viewModel, language = language)
                 AdminTab.PRODUCTS -> AdminProductsView(viewModel = viewModel, language = language)
+                AdminTab.INVENTORY -> AdminInventoryView(viewModel = viewModel, language = language)
                 AdminTab.CATEGORIES -> AdminCategoriesView(viewModel = viewModel, language = language)
                 AdminTab.ORDERS -> AdminOrdersView(viewModel = viewModel, language = language)
                 AdminTab.COURIERS -> AdminCouriersView(viewModel = viewModel, language = language)

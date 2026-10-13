@@ -40,7 +40,7 @@ object DatabasePrepopulator {
             )
         )
 
-        // 2. Initial Users
+        // 2. Initial Users (Role-Based Permissions: OWNER, MANAGER, STAFF, CUSTOMER)
         val adminUserId = userDao.insertUser(
             UserEntity(
                 id = 1,
@@ -48,7 +48,29 @@ object DatabasePrepopulator {
                 email = "owner@ilamfashion.com",
                 phone = "+8801711456789",
                 passwordHash = "ilam2026", // Owner Passcode
-                role = "ADMIN"
+                role = "OWNER"
+            )
+        )
+
+        userDao.insertUser(
+            UserEntity(
+                id = 3,
+                username = "manager",
+                email = "manager@ilamfashion.com",
+                phone = "+8801722334455",
+                passwordHash = "mgr2026", // Manager PIN
+                role = "MANAGER"
+            )
+        )
+
+        userDao.insertUser(
+            UserEntity(
+                id = 4,
+                username = "staff",
+                email = "staff@ilamfashion.com",
+                phone = "+8801733445566",
+                passwordHash = "staff123", // Staff Outlet PIN
+                role = "STAFF"
             )
         )
 
@@ -163,7 +185,13 @@ object DatabasePrepopulator {
                 isBestSeller = true,
                 isSale = true,
                 isPublished = true,
-                primaryImageUrl = "panjabi"
+                primaryImageUrl = "panjabi",
+                barcode = "890123456001",
+                brand = "ILAM Royal Panjabi",
+                purchasePrice = 2400.0,
+                minStockAlert = 5,
+                supplier = "Dhaka Silk Loom Artisans",
+                stockStatus = "IN_STOCK"
             ),
             ProductEntity(
                 id = 2,
@@ -183,7 +211,13 @@ object DatabasePrepopulator {
                 isBestSeller = false,
                 isSale = true,
                 isPublished = true,
-                primaryImageUrl = "shirt"
+                primaryImageUrl = "shirt",
+                barcode = "890123456002",
+                brand = "ILAM Contemporary",
+                purchasePrice = 1450.0,
+                minStockAlert = 4,
+                supplier = "EuroLinen Imports",
+                stockStatus = "IN_STOCK"
             ),
             ProductEntity(
                 id = 3,
@@ -612,5 +646,46 @@ object DatabasePrepopulator {
                 )
             )
         )
+
+        // 10. Seed Granular Inventory Stocks for Fashion Products
+        val inventoryDao = db.inventoryDao()
+        val initialStocks = listOf(
+            // Product 1: Emerald Heritage Silk Panjabi
+            InventoryStockEntity(id = 1, productId = 1, size = "M", color = "Emerald Green", quantityOnHand = 12, reservedQuantity = 1, reorderPoint = 3, warehouseLocation = "Banani Flagship", rackBinNumber = "RACK-E1"),
+            InventoryStockEntity(id = 2, productId = 1, size = "L", color = "Emerald Green", quantityOnHand = 8, reservedQuantity = 0, reorderPoint = 3, warehouseLocation = "Banani Flagship", rackBinNumber = "RACK-E2"),
+            InventoryStockEntity(id = 3, productId = 1, size = "XL", color = "Emerald Green", quantityOnHand = 4, reservedQuantity = 0, reorderPoint = 3, warehouseLocation = "Banani Flagship", rackBinNumber = "RACK-E3"),
+
+            // Product 2: Imperial Gold Embroidered Sherwani
+            InventoryStockEntity(id = 4, productId = 2, size = "38R", color = "Imperial Gold", quantityOnHand = 3, reservedQuantity = 1, reorderPoint = 2, warehouseLocation = "Banani Vault", rackBinNumber = "VAULT-S1"),
+            InventoryStockEntity(id = 5, productId = 2, size = "40R", color = "Imperial Gold", quantityOnHand = 5, reservedQuantity = 0, reorderPoint = 2, warehouseLocation = "Banani Vault", rackBinNumber = "VAULT-S2"),
+            InventoryStockEntity(id = 6, productId = 2, size = "42R", color = "Imperial Gold", quantityOnHand = 2, reservedQuantity = 0, reorderPoint = 2, warehouseLocation = "Banani Vault", rackBinNumber = "VAULT-S3"),
+
+            // Product 3: Noir Minimalist Linen Overshirt
+            InventoryStockEntity(id = 7, productId = 3, size = "S", color = "Noir Black", quantityOnHand = 15, reservedQuantity = 0, reorderPoint = 4, warehouseLocation = "Gulshan Hub", rackBinNumber = "RACK-N1"),
+            InventoryStockEntity(id = 8, productId = 3, size = "M", color = "Noir Black", quantityOnHand = 20, reservedQuantity = 2, reorderPoint = 5, warehouseLocation = "Gulshan Hub", rackBinNumber = "RACK-N2"),
+            InventoryStockEntity(id = 9, productId = 3, size = "L", color = "Noir Black", quantityOnHand = 14, reservedQuantity = 1, reorderPoint = 4, warehouseLocation = "Gulshan Hub", rackBinNumber = "RACK-N3"),
+
+            // Product 4: Crimson Jamdani Royal Sari
+            InventoryStockEntity(id = 10, productId = 4, size = "Free Size", color = "Crimson Gold", quantityOnHand = 6, reservedQuantity = 1, reorderPoint = 2, warehouseLocation = "Banani Vault", rackBinNumber = "VAULT-J1"),
+
+            // Product 5: Supima Mercerized Luxe Polo
+            InventoryStockEntity(id = 11, productId = 5, size = "M", color = "Black Obsidian", quantityOnHand = 25, reservedQuantity = 2, reorderPoint = 6, warehouseLocation = "Uttara Depot", rackBinNumber = "RACK-P1"),
+            InventoryStockEntity(id = 12, productId = 5, size = "L", color = "Black Obsidian", quantityOnHand = 18, reservedQuantity = 1, reorderPoint = 5, warehouseLocation = "Uttara Depot", rackBinNumber = "RACK-P2"),
+            InventoryStockEntity(id = 13, productId = 5, size = "XL", color = "Black Obsidian", quantityOnHand = 3, reservedQuantity = 0, reorderPoint = 5, warehouseLocation = "Uttara Depot", rackBinNumber = "RACK-P3"), // Low Stock!
+
+            // Product 6: Artisanal Hand-Burnished Leather Loafers
+            InventoryStockEntity(id = 14, productId = 6, size = "40", color = "Hand-Burnished Cognac", quantityOnHand = 4, reservedQuantity = 0, reorderPoint = 2, warehouseLocation = "Banani Flagship", rackBinNumber = "FOOT-L1"),
+            InventoryStockEntity(id = 15, productId = 6, size = "41", color = "Hand-Burnished Cognac", quantityOnHand = 6, reservedQuantity = 1, reorderPoint = 2, warehouseLocation = "Banani Flagship", rackBinNumber = "FOOT-L2"),
+            InventoryStockEntity(id = 16, productId = 6, size = "42", color = "Hand-Burnished Cognac", quantityOnHand = 2, reservedQuantity = 0, reorderPoint = 2, warehouseLocation = "Banani Flagship", rackBinNumber = "FOOT-L3"), // Low Stock!
+
+            // Product 7: Midnight Blue Slim Stretch Chino
+            InventoryStockEntity(id = 17, productId = 7, size = "30", color = "Midnight Blue", quantityOnHand = 10, reservedQuantity = 0, reorderPoint = 3, warehouseLocation = "Gulshan Hub", rackBinNumber = "PANT-C1"),
+            InventoryStockEntity(id = 18, productId = 7, size = "32", color = "Midnight Blue", quantityOnHand = 16, reservedQuantity = 1, reorderPoint = 4, warehouseLocation = "Gulshan Hub", rackBinNumber = "PANT-C2"),
+            InventoryStockEntity(id = 19, productId = 7, size = "34", color = "Midnight Blue", quantityOnHand = 12, reservedQuantity = 0, reorderPoint = 3, warehouseLocation = "Gulshan Hub", rackBinNumber = "PANT-C3"),
+
+            // Product 8: Gold Calligraphy Pure Silk Scarf
+            InventoryStockEntity(id = 20, productId = 8, size = "One Size", color = "Onyx Gold", quantityOnHand = 15, reservedQuantity = 0, reorderPoint = 4, warehouseLocation = "Banani Flagship", rackBinNumber = "ACC-S1")
+        )
+        inventoryDao.insertAllStocks(initialStocks)
     }
 }

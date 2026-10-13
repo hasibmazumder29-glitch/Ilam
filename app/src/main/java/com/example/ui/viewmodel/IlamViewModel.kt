@@ -31,9 +31,42 @@ enum class AppDestination {
     ADMIN_PORTAL
 }
 
+enum class UserRole {
+    OWNER,
+    MANAGER,
+    STAFF;
+
+    val canDeleteProduct: Boolean
+        get() = this == OWNER
+
+    val canEditPricing: Boolean
+        get() = this == OWNER || this == MANAGER
+
+    val canChangeSellingPrice: Boolean
+        get() = this == OWNER || this == MANAGER
+
+    val canChangePurchasePrice: Boolean
+        get() = this == OWNER
+
+    val canAddEditProduct: Boolean
+        get() = this == OWNER || this == MANAGER
+
+    val canManageUsers: Boolean
+        get() = this == OWNER
+
+    val canViewCostPrice: Boolean
+        get() = this == OWNER || this == MANAGER
+
+    val canModifySettings: Boolean
+        get() = this == OWNER
+}
+
 enum class AdminTab {
     DASHBOARD,
-    PRODUCTS,
+    SCAN_PRODUCT, // QR & Barcode Scanner for Outlet Staff
+    POS_SALES,    // Fast point-of-sale terminal
+    PRODUCTS,     // Full catalog with add/edit/duplicate/soft-delete
+    INVENTORY,    // Stock levels & variant tracking
     CATEGORIES,
     ORDERS,
     COURIERS,
@@ -46,7 +79,11 @@ enum class AdminTab {
 data class DashboardMetrics(
     val totalSales: Double = 0.0,
     val todaySales: Double = 0.0,
+    val monthlySales: Double = 0.0,
     val totalOrders: Int = 0,
+    val totalProducts: Int = 0,
+    val totalStockQuantity: Int = 0,
+    val outOfStockCount: Int = 0,
     val pendingOrders: Int = 0,
     val processingOrders: Int = 0,
     val deliveredOrders: Int = 0,
@@ -101,12 +138,17 @@ class IlamViewModel(application: Application) : AndroidViewModel(application) {
 
     // Repository Flows
     val allProducts = repository.allProducts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val activeProducts = repository.activeProducts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val publishedProducts = repository.publishedProducts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val newArrivals = repository.newArrivals.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val featuredProducts = repository.featuredProducts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val bestSellers = repository.bestSellers.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val saleProducts = repository.saleProducts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val lowStockProducts = repository.lowStockProducts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Granular variant inventory stocks & low stock alerts
+    val allInventoryStocks = repository.allInventoryStocks.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val lowStockAlerts = repository.lowStockAlerts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allCategories = repository.allCategories.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val visibleCategories = repository.visibleCategories.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -147,13 +189,31 @@ class IlamViewModel(application: Application) : AndroidViewModel(application) {
     private val _lastPlacedOrder = MutableStateFlow<OrderEntity?>(null)
     val lastPlacedOrder: StateFlow<OrderEntity?> = _lastPlacedOrder.asStateFlow()
 
+    // Current active role for RBAC
+    private val _currentUserRole = MutableStateFlow(UserRole.OWNER)
+    val currentUserRole: StateFlow<UserRole> = _currentUserRole.asStateFlow()
+
+    private val _currentStaffName = MutableStateFlow("Master Admin (Owner)")
+    val currentStaffName: StateFlow<String> = _currentStaffName.asStateFlow()
+
+    // Scanned product in QR/Barcode Scanner
+    private val _scannedProduct = MutableStateFlow<ProductEntity?>(null)
+    val scannedProduct: StateFlow<ProductEntity?> = _scannedProduct.asStateFlow()
+
+    // Preselected product for POS selling
+    private val _posSelectedProduct = MutableStateFlow<ProductEntity?>(null)
+    val posSelectedProduct: StateFlow<ProductEntity?> = _posSelectedProduct.asStateFlow()
+
     // Dashboard metrics derived reactively from orders & products
-    val dashboardMetrics: StateFlow<DashboardMetrics> = combine(allOrders, lowStockProducts) { orders, lowStock ->
+    val dashboardMetrics: StateFlow<DashboardMetrics> = combine(allOrders, allProducts) { orders, products ->
         val todayStr = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+        val monthStr = SimpleDateFormat("yyyyMM", Locale.US).format(Date())
         val todayFormat = SimpleDateFormat("yyyyMMdd", Locale.US)
+        val monthFormat = SimpleDateFormat("yyyyMM", Locale.US)
 
         var totalSales = 0.0
         var todaySales = 0.0
+        var monthlySales = 0.0
         var pending = 0
         var processing = 0
         var delivered = 0
@@ -163,8 +223,12 @@ class IlamViewModel(application: Application) : AndroidViewModel(application) {
             if (order.orderStatus != "Cancelled") {
                 totalSales += order.totalAmount
                 val orderDay = todayFormat.format(Date(order.createdAt))
+                val orderMonth = monthFormat.format(Date(order.createdAt))
                 if (orderDay == todayStr) {
                     todaySales += order.totalAmount
+                }
+                if (orderMonth == monthStr) {
+                    monthlySales += order.totalAmount
                 }
             }
 
@@ -176,16 +240,25 @@ class IlamViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        val activeProducts = products.filter { !it.isDeleted }
+        val outOfStock = activeProducts.count { it.stock <= 0 || it.stockStatus == "OUT_OF_STOCK" }
+        val lowStock = activeProducts.count { it.stock > 0 && it.stock <= it.minStockAlert }
+        val totalStockUnits = activeProducts.sumOf { it.stock }
+
         DashboardMetrics(
             totalSales = totalSales,
             todaySales = todaySales,
+            monthlySales = monthlySales,
             totalOrders = orders.size,
+            totalProducts = activeProducts.size,
+            totalStockQuantity = totalStockUnits,
+            outOfStockCount = outOfStock,
             pendingOrders = pending,
             processingOrders = processing,
             deliveredOrders = delivered,
             cancelledOrders = cancelled,
-            totalCustomers = 128, // Dynamic customer base count
-            lowStockCount = lowStock.size
+            totalCustomers = 128,
+            lowStockCount = lowStock
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardMetrics())
 
@@ -239,29 +312,126 @@ class IlamViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun unlockAdmin(pin: String): Boolean {
-        if (pin.trim() == "ilam2026" || pin.trim() == "1234") {
-            _isAdminUnlocked.value = true
-            _destination.value = AppDestination.ADMIN_PORTAL
-            return true
+        return when (pin.trim()) {
+            "ilam2026", "owner123" -> {
+                _currentUserRole.value = UserRole.OWNER
+                _currentStaffName.value = "Hasib Mazumder (Owner)"
+                _isAdminUnlocked.value = true
+                _destination.value = AppDestination.ADMIN_PORTAL
+                true
+            }
+            "mgr2026", "manager123" -> {
+                _currentUserRole.value = UserRole.MANAGER
+                _currentStaffName.value = "Outlet Store Manager"
+                _isAdminUnlocked.value = true
+                _destination.value = AppDestination.ADMIN_PORTAL
+                true
+            }
+            "staff123", "outlet123", "1234" -> {
+                _currentUserRole.value = UserRole.STAFF
+                _currentStaffName.value = "Outlet Sales Associate"
+                _isAdminUnlocked.value = true
+                _adminTab.value = AdminTab.SCAN_PRODUCT
+                _destination.value = AppDestination.ADMIN_PORTAL
+                true
+            }
+            else -> false
         }
-        return false
     }
 
     /**
-     * Authenticates owner access with realistic feedback overlay for credential verification.
+     * Authenticates owner/manager/staff access with role-based PIN check and realistic feedback.
      */
     fun unlockAdminWithVerification(pin: String, delayMs: Long = 600L, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val isBn = _language.value == AppLanguage.BN
-            val message = if (isBn) "নিরাপত্তা পাসকোড যাচাই করা হচ্ছে..." else "Authenticating Owner Access..."
-            val subtitle = if (isBn) "ভূমিকা ও অ্যাক্সেস কন্ট্রোল পরীক্ষা করা হচ্ছে" else "Verifying Role-Based Access Control Credentials"
+            val message = if (isBn) "নিরাপত্তা পাসকোড যাচাই করা হচ্ছে..." else "Verifying Security Credentials..."
+            val subtitle = if (isBn) "ভূমিকা ও অ্যাক্সেস কন্ট্রোল পরীক্ষা করা হচ্ছে" else "Checking Role-Based Permissions (OWNER / MANAGER / STAFF)"
             withLoading(message = message, subtitle = subtitle, delayMs = delayMs) {
-                val success = pin.trim() == "ilam2026" || pin.trim() == "1234"
-                if (success) {
-                    _isAdminUnlocked.value = true
-                    _destination.value = AppDestination.ADMIN_PORTAL
-                }
+                val success = unlockAdmin(pin)
                 onResult(success)
+            }
+        }
+    }
+
+    fun setStaffRoleDirectly(role: UserRole) {
+        _currentUserRole.value = role
+        _currentStaffName.value = when (role) {
+            UserRole.OWNER -> "Hasib Mazumder (Owner)"
+            UserRole.MANAGER -> "Store Manager"
+            UserRole.STAFF -> "Outlet Staff"
+        }
+    }
+
+    // --- QR / Barcode Scanner & POS integration ---
+    fun scanProductCode(code: String, onResult: (ProductEntity?) -> Unit) {
+        viewModelScope.launch {
+            val product = repository.findProductBySkuOrBarcode(code.trim())
+            _scannedProduct.value = product
+            onResult(product)
+        }
+    }
+
+    fun clearScannedProduct() {
+        _scannedProduct.value = null
+    }
+
+    fun setScannedProduct(product: ProductEntity?) {
+        _scannedProduct.value = product
+    }
+
+    fun startPosSaleForProduct(product: ProductEntity) {
+        _posSelectedProduct.value = product
+        _adminTab.value = AdminTab.POS_SALES
+    }
+
+    fun clearPosProduct() {
+        _posSelectedProduct.value = null
+    }
+
+    fun processPosSale(
+        product: ProductEntity,
+        quantity: Int,
+        size: String,
+        color: String,
+        unitPrice: Double,
+        customerName: String,
+        customerPhone: String,
+        paymentMethod: String,
+        onSuccess: (OrderEntity) -> Unit
+    ) {
+        viewModelScope.launch {
+            val isBn = _language.value == AppLanguage.BN
+            val msg = if (isBn) "কাউন্টারে বিক্রয় সম্পন্ন হচ্ছে..." else "Processing Outlet POS Counter Sale..."
+            val sub = if (isBn) "স্টক সমন্বয় ও রসিদ তৈরি হচ্ছে" else "Deducting stock & recording staff sale"
+            withLoading(message = msg, subtitle = sub, delayMs = 500L) {
+                val orderId = repository.createPosSale(
+                    product = product,
+                    quantity = quantity,
+                    size = size,
+                    color = color,
+                    unitPrice = unitPrice,
+                    staffName = _currentStaffName.value,
+                    staffRole = _currentUserRole.value.name,
+                    paymentMethod = paymentMethod,
+                    customerName = customerName,
+                    customerPhone = customerPhone
+                )
+                val order = allOrders.value.find { it.id == orderId } ?: OrderEntity(
+                    id = orderId,
+                    orderNumber = "ILAM-POS-$orderId",
+                    customerName = customerName,
+                    totalAmount = unitPrice * quantity,
+                    paymentStatus = "Paid",
+                    orderStatus = "Delivered",
+                    salesChannel = "OUTLET_POS",
+                    soldByStaffName = _currentStaffName.value,
+                    soldByStaffRole = _currentUserRole.value.name
+                )
+                _lastPlacedOrder.value = order
+                _posSelectedProduct.value = null
+                _scannedProduct.value = null
+                onSuccess(order)
             }
         }
     }
@@ -449,15 +619,68 @@ class IlamViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun adminDuplicateProduct(product: ProductEntity) {
+        viewModelScope.launch {
+            repository.duplicateProduct(product)
+        }
+    }
+
     fun adminDeleteProduct(id: Long) {
         viewModelScope.launch {
             repository.deleteProduct(id)
         }
     }
 
+    fun adminArchiveProduct(id: Long) {
+        viewModelScope.launch {
+            repository.archiveProduct(id)
+        }
+    }
+
     fun adminToggleProductPublish(product: ProductEntity) {
         viewModelScope.launch {
             repository.toggleProductPublish(product.id, product.isPublished)
+        }
+    }
+
+    fun adminMarkOutOfStock(product: ProductEntity) {
+        viewModelScope.launch {
+            repository.updateProductStock(product.id, 0)
+        }
+    }
+
+    fun adminActivateProduct(product: ProductEntity, restockQty: Int = 10) {
+        viewModelScope.launch {
+            val updated = product.copy(
+                isPublished = true,
+                isDeleted = false,
+                stock = if (product.stock <= 0) restockQty else product.stock,
+                stockStatus = "IN_STOCK"
+            )
+            repository.updateProduct(updated)
+        }
+    }
+
+    // --- Inventory Stock Level Management ---
+    fun adminSaveInventoryStock(stock: InventoryStockEntity) {
+        viewModelScope.launch {
+            if (stock.id == 0L) {
+                repository.insertStock(stock)
+            } else {
+                repository.updateStock(stock)
+            }
+        }
+    }
+
+    fun adminDeleteInventoryStock(id: Long) {
+        viewModelScope.launch {
+            repository.deleteStock(id)
+        }
+    }
+
+    fun adminRestockVariant(stockId: Long, additionalQuantity: Int) {
+        viewModelScope.launch {
+            repository.restockVariant(stockId, additionalQuantity)
         }
     }
 

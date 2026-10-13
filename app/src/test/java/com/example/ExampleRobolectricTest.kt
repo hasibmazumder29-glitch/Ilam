@@ -117,10 +117,18 @@ class ExampleRobolectricTest {
         assertEquals(15, updatedFetched?.stock)
         assertEquals(4800.0, updatedFetched?.price ?: 0.0, 0.01)
 
-        // Delete product
+        // Delete product (Soft delete archive to preserve sales records)
         repository.deleteProduct(prodId)
-        val afterDelete = repository.getProductById(prodId).first()
-        assertNull(afterDelete)
+        val activeAfterDelete = repository.activeProducts.first()
+        assertFalse("Archived product should disappear from active catalog", activeAfterDelete.any { it.id == prodId })
+        val archived = repository.getProductById(prodId).first()
+        assertNotNull(archived)
+        assertTrue("isDeleted flag should be set to true", archived!!.isDeleted)
+
+        // Permanent deletion test
+        repository.deleteProductPermanently(prodId)
+        val afterHardDelete = repository.getProductById(prodId).first()
+        assertNull(afterHardDelete)
     }
 
     @Test
@@ -198,5 +206,180 @@ class ExampleRobolectricTest {
         org.robolectric.shadows.ShadowLooper.idleMainLooper()
         assertEquals(false, wrongPinSuccess)
         assertFalse(vm.isAdminUnlocked.value)
+    }
+
+    @Test
+    fun `test fashion inventory stock schema and operations`() = runBlocking {
+        // Seed initial data
+        DatabasePrepopulator.populateInitialData(db)
+
+        val inventoryStocks = repository.allInventoryStocks.first()
+        assertTrue("Inventory stocks should be seeded", inventoryStocks.isNotEmpty())
+
+        // Check product 1 variant stock levels
+        val prod1Stocks = repository.getStocksByProduct(1L).first()
+        assertTrue("Product 1 should have multiple size/color variants", prod1Stocks.size >= 3)
+        assertTrue(prod1Stocks.any { it.size == "M" })
+        assertTrue(prod1Stocks.any { it.size == "L" })
+
+        // Check low stock query
+        val lowStockVariants = repository.lowStockAlerts.first()
+        assertTrue("Should detect variants with low stock", lowStockVariants.isNotEmpty())
+
+        // Test insertion of new fashion stock level variant
+        val newStock = com.example.data.entity.InventoryStockEntity(
+            productId = 1L,
+            size = "XXL",
+            color = "Emerald Gold Trim",
+            quantityOnHand = 15,
+            reservedQuantity = 2,
+            reorderPoint = 4,
+            warehouseLocation = "Gulshan Atelier",
+            rackBinNumber = "RACK-E4"
+        )
+        val stockId = repository.insertStock(newStock)
+        assertTrue(stockId > 0)
+
+        assertEquals(13, newStock.availableStock)
+        assertFalse(newStock.isLowStock)
+
+        // Restock variant operation
+        repository.restockVariant(stockId, 10)
+        val updatedStocks = repository.getStocksByProduct(1L).first()
+        val restocked = updatedStocks.find { it.id == stockId }
+        assertNotNull(restocked)
+        assertEquals(25, restocked?.quantityOnHand)
+        assertEquals(23, restocked?.availableStock)
+
+        // Delete stock variant
+        repository.deleteStock(stockId)
+        val afterDelete = repository.getStocksByProduct(1L).first()
+        assertFalse(afterDelete.any { it.id == stockId })
+    }
+
+    @Test
+    fun `test complete owner and staff QR scanning and POS sale lifecycle`() = runBlocking {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        val vm = com.example.ui.viewmodel.IlamViewModel(app)
+
+        // Step 1. OWNER: Login as OWNER
+        assertTrue("Owner login with PIN should succeed", vm.unlockAdmin("ilam2026"))
+        assertEquals(com.example.ui.viewmodel.UserRole.OWNER, vm.currentUserRole.value)
+        assertTrue(vm.currentUserRole.value.canDeleteProduct)
+        assertTrue(vm.currentUserRole.value.canChangeSellingPrice)
+        assertTrue(vm.currentUserRole.value.canViewCostPrice)
+
+        // Step 2. OWNER: Create product with photo, price, size/color, stock
+        val testSku = "ILAM-QR-TEST-001"
+        val product = ProductEntity(
+            sku = testSku,
+            barcode = "8901234567890",
+            nameEn = "Royal Zari Panjabi",
+            nameBn = "রয়্যাল জরি পাঞ্জাবি",
+            price = 5000.0,
+            discountPrice = 4500.0,
+            purchasePrice = 2500.0,
+            stock = 2,
+            minStockAlert = 1,
+            sizes = "M, L, XL",
+            colors = "Regal Gold, Midnight Navy",
+            primaryImageUrl = "men_panjabi_luxe",
+            isPublished = true
+        )
+        val productId = repository.insertProduct(product)
+        assertTrue("Product should be saved with ID > 0", productId > 0)
+
+        val saved = repository.findProductBySkuOrBarcode(testSku)
+        assertNotNull("Product should be saved in DB", saved)
+        assertEquals(2, saved!!.stock)
+        assertEquals(4500.0, saved.effectiveSellingPrice, 0.01)
+
+        // Step 3. OWNER: Generate QR Code (deterministic QR matrix contains SKU identifier only)
+        val qrBitmap = com.example.ui.admin.generateQrBitmap(testSku)
+        assertNotNull("QR bitmap should be generated", qrBitmap)
+        assertEquals(256, qrBitmap.width)
+        assertEquals(256, qrBitmap.height)
+
+        // Step 4. STAFF: Login as STAFF
+        vm.unlockAdmin("staff123")
+        assertEquals(com.example.ui.viewmodel.UserRole.STAFF, vm.currentUserRole.value)
+        assertFalse("Staff cannot delete products", vm.currentUserRole.value.canDeleteProduct)
+        assertFalse("Staff cannot change selling price", vm.currentUserRole.value.canChangeSellingPrice)
+        assertFalse("Staff cannot change purchase price", vm.currentUserRole.value.canChangePurchasePrice)
+
+        // Step 5. STAFF: Scan QR / Barcode -> Product appears, view price
+        val foundProduct = repository.findProductBySkuOrBarcode(testSku)
+        assertNotNull("Scanning QR SKU should find the exact product", foundProduct)
+        assertEquals("Royal Zari Panjabi", foundProduct?.nameEn)
+        assertEquals(4500.0, foundProduct?.effectiveSellingPrice ?: 0.0, 0.01)
+
+        // Step 6. STAFF: Sell Product (1 unit) -> stock decreases
+        val posSaleOrderId = repository.createPosSale(
+            product = foundProduct!!,
+            quantity = 1,
+            size = "L",
+            color = "Regal Gold",
+            unitPrice = 4500.0,
+            staffName = "Outlet Sales Associate",
+            staffRole = "STAFF",
+            customerName = "Mr. Shakib",
+            customerPhone = "+880 1711-223344",
+            paymentMethod = "Cash at Counter"
+        )
+        assertTrue("POS sale order ID should be valid", posSaleOrderId > 0)
+
+        // Verify sale record & stock decrease
+        val updatedAfterSale1 = repository.findProductBySkuOrBarcode(testSku)
+        assertEquals("Stock should decrease from 2 to 1", 1, updatedAfterSale1?.stock)
+        assertEquals("LOW_STOCK", updatedAfterSale1?.stockStatus)
+
+        // Step 7. Complete another sale so stock reaches 0 -> shows OUT OF STOCK
+        repository.createPosSale(
+            product = updatedAfterSale1!!,
+            quantity = 1,
+            size = "M",
+            color = "Regal Gold",
+            unitPrice = 4500.0,
+            staffName = "Outlet Sales Associate",
+            staffRole = "STAFF",
+            customerName = "Walk-in Guest",
+            customerPhone = "+880 1700-000000",
+            paymentMethod = "bKash POS"
+        )
+
+        val outOfStockProduct = repository.findProductBySkuOrBarcode(testSku)
+        assertEquals("Stock should reach 0", 0, outOfStockProduct?.stock)
+        assertEquals("OUT_OF_STOCK", outOfStockProduct?.stockStatus)
+        assertTrue("Product isOutOfStock should be true", outOfStockProduct!!.isOutOfStock)
+
+        // Step 8. OWNER: Edit price -> New price appears after scanning the same QR
+        vm.unlockAdmin("ilam2026")
+        val editedProduct = outOfStockProduct.copy(
+            price = 6000.0,
+            discountPrice = 5500.0,
+            stock = 5,
+            stockStatus = "IN_STOCK"
+        )
+        repository.updateProduct(editedProduct)
+
+        // Staff scans the same QR code again -> new price appears
+        val scannedAgain = repository.findProductBySkuOrBarcode(testSku)
+        assertEquals("Scanned product should reflect new price", 5500.0, scannedAgain?.effectiveSellingPrice ?: 0.0, 0.01)
+        assertEquals("Scanned product should reflect restocked count", 5, scannedAgain?.stock)
+
+        // Step 9. OWNER: Delete/archive product -> Disappears from active products, historical sales remain intact
+        val totalOrdersBeforeArchive = repository.allOrders.first().size
+        assertTrue("Should have at least 2 historical sales recorded", totalOrdersBeforeArchive >= 2)
+
+        repository.archiveProduct(productId)
+        val activeProducts = repository.activeProducts.first()
+        assertFalse("Archived product must disappear from active catalog", activeProducts.any { it.id == productId })
+
+        // Historical sales remain intact
+        val ordersAfterArchive = repository.allOrders.first()
+        assertEquals("Historical sales count must not decrease when product is deleted", totalOrdersBeforeArchive, ordersAfterArchive.size)
+        val posSales = ordersAfterArchive.filter { it.salesChannel == "OUTLET_POS" }
+        assertEquals(2, posSales.size)
+        assertTrue("Historical order details must be intact", posSales.any { it.soldByStaffRole == "STAFF" })
     }
 }
